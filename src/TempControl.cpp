@@ -75,6 +75,9 @@ uint16_t TempControl::lastIdleTime;
 uint16_t TempControl::lastHeatTime;
 uint16_t TempControl::lastCoolTime;
 uint16_t TempControl::waitTime;
+uint16_t TempControl::fanTurnedOn;
+uint16_t TempControl::lastFanOn;
+
 #endif
 
 
@@ -275,8 +278,19 @@ void TempControl::updateState(){
 		case WAITING_TO_HEAT:
 		case WAITING_FOR_PEAK_DETECT:
 		{
-			lastIdleTime=secs;		
+			// Not sure, but in case of secs rolling over.
+			if(lastIdleTime>secs){
+				fanTurnedOn = 0;
+				lastFanOn = secs;
+			}
+		
+			lastIdleTime=secs;
 			// set waitTime to zero. It will be set to the maximum required waitTime below when wait is in effect.
+		
+			if((fanTurnedOn == 1) && (lastFanOn+minTimes.FAN_ON_TIME < secs)){
+				fanTurnedOn = 0;
+			}
+
 			if(stayIdle){
 				break;
 			}
@@ -294,6 +308,10 @@ void TempControl::updateState(){
 					tempControl.updateWaitTime(minTimes.MIN_COOL_OFF_TIME, sinceCooling);
 				}
 				if(tempControl.cooler != &defaultActuator){
+					// To try and make sure the fan is turned off some secs, before turned on the next time.
+					if(getWaitTime() < 15){
+						fanTurnedOn = 0;
+					}
 					if(getWaitTime() > 0){
 						state = WAITING_TO_COOL;
 					}
@@ -312,6 +330,10 @@ void TempControl::updateState(){
 					}
 				}
 				if(tempControl.heater != &defaultActuator || (cc.lightAsHeater && (tempControl.light != &defaultActuator))){
+					// To try and make sure the fan is turned off some secs, before turned on the next time.
+					if(getWaitTime() < 15){
+						fanTurnedOn = 0;
+					}
 					if(getWaitTime() > 0){
 						state = WAITING_TO_HEAT;
 					}
@@ -339,6 +361,8 @@ void TempControl::updateState(){
 		{
 			doNegPeakDetect=true;
 			lastCoolTime = secs;
+			lastFanOn=secs;
+			fanTurnedOn = 1;
 			updateEstimatedPeak(cc.maxCoolTimeForEstimate, cs.coolEstimator, sinceIdle);
 			state = COOLING; // set to cooling here, so the display of COOLING/COOLING_MIN_TIME is correct
 			
@@ -361,6 +385,8 @@ void TempControl::updateState(){
 		{
 			doPosPeakDetect=true;
 			lastHeatTime=secs;
+			lastFanOn=secs;
+			fanTurnedOn = 1;
 			updateEstimatedPeak(cc.maxHeatTimeForEstimate, cs.heatEstimator, sinceIdle);
 			state = HEATING; // reset to heating here, so the display of HEATING/HEATING_MIN_TIME is correct
 			
@@ -401,7 +427,7 @@ void TempControl::updateOutputs() {
 	cooler->setActive(cooling);		
 	heater->setActive(!cc.lightAsHeater && heating);	
 	light->setActive(isDoorOpen() || (cc.lightAsHeater && heating) || cameraLightState.isActive());	
-	fan->setActive(heating || cooling);
+	fan->setActive(heating || cooling || fanTurnedOn);
 }
 
 
