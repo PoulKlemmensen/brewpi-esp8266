@@ -72,6 +72,10 @@ public:
     uint16_t MIN_HEAT_OFF_TIME;  //! Minimum heater off time, in seconds. To heat in cycles, not lots of short bursts
     uint16_t MIN_COOL_ON_TIME;  //! Minimum on time for the cooler.
     uint16_t MIN_HEAT_ON_TIME;  //! Minimum on time for the heater.
+    uint16_t FAN_ON_TIME;  //
+    uint16_t FAN_OFF_TIME;  //
+
+
 
 /**
  * Minimum cooler off time, in seconds.  Used when the controller is in Fridge Constant mode.
@@ -104,10 +108,13 @@ namespace MinTimesKeys {
 	constexpr auto MIN_HEAT_OFF_TIME = "MIN_HEAT_OFF_TIME";
 	constexpr auto MIN_COOL_ON_TIME = "MIN_COOL_ON_TIME";
 	constexpr auto MIN_HEAT_ON_TIME = "MIN_HEAT_ON_TIME";
+	constexpr auto FAN_ON_TIME = "FAN_ON_TIME";
+	constexpr auto FAN_OFF_TIME = "FAN_OFF_TIME";
 	constexpr auto MIN_COOL_OFF_TIME_FRIDGE_CONSTANT = "MIN_COOL_OFF_TIME_FRIDGE_CONSTANT";
 	constexpr auto MIN_SWITCH_TIME = "MIN_SWITCH_TIME";
 	constexpr auto COOL_PEAK_DETECT_TIME = "COOL_PEAK_DETECT_TIME";
 	constexpr auto HEAT_PEAK_DETECT_TIME = "HEAT_PEAK_DETECT_TIME";
+
 };
 
 // struct ControlConstants was moved to EepromStructs.h
@@ -329,6 +336,9 @@ private:
 	TEMP_CONTROL_FIELD uint16_t lastIdleTime; //!< Last time the controller was idle
 	TEMP_CONTROL_FIELD uint16_t lastHeatTime; //!< Last time that the controller was heating
 	TEMP_CONTROL_FIELD uint16_t lastCoolTime; //!< Last time that the controller was cooling
+	TEMP_CONTROL_FIELD uint16_t fanTurnedOn; // Delay in turning fan off
+	TEMP_CONTROL_FIELD uint16_t lastFanOn; // 
+	TEMP_CONTROL_FIELD uint16_t lastFanOff; //
 	TEMP_CONTROL_FIELD uint16_t waitTime;
 
 

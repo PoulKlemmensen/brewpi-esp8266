@@ -386,6 +386,31 @@ uint8_t processExtendedSettingsJson(const DynamicJsonDocument& json, bool trigge
             }
         }
 
+        // FAN_ON_TIME
+        if(json.containsKey(MinTimesKeys::FAN_ON_TIME)) {
+            if(json[MinTimesKeys::FAN_ON_TIME].is<uint16_t>()) {
+                if(minTimes.FAN_ON_TIME != json[MinTimesKeys::FAN_ON_TIME].as<uint16_t>()) {
+                    minTimes.FAN_ON_TIME = json[MinTimesKeys::FAN_ON_TIME].as<uint16_t>();
+                    saveMinTimes = true;
+                }
+            } else {
+                Log.warning(F("Invalid [FAN_ON_TIME]:(%s) received (wrong type).\r\n"), json[MinTimesKeys::FAN_ON_TIME]);
+                failCount++;
+            }
+        }
+
+        // FAN_OFF_TIME
+        if(json.containsKey(MinTimesKeys::FAN_OFF_TIME)) {
+            if(json[MinTimesKeys::FAN_OFF_TIME].is<uint16_t>()) {
+                if(minTimes.FAN_OFF_TIME != json[MinTimesKeys::FAN_OFF_TIME].as<uint16_t>()) {
+                    minTimes.FAN_OFF_TIME = json[MinTimesKeys::FAN_OFF_TIME].as<uint16_t>();
+                    saveMinTimes = true;
+                }
+            } else {
+                Log.warning(F("Invalid [FAN_OFF_TIME]:(%s) received (wrong type).\r\n"), json[MinTimesKeys::FAN_OFF_TIME]);
+                failCount++;
+            }
+        }
 
         // MIN_COOL_OFF_TIME_FRIDGE_CONSTANT
         if(json.containsKey(MinTimesKeys::MIN_COOL_OFF_TIME_FRIDGE_CONSTANT)) {

@@ -75,6 +75,10 @@ uint16_t TempControl::lastIdleTime;
 uint16_t TempControl::lastHeatTime;
 uint16_t TempControl::lastCoolTime;
 uint16_t TempControl::waitTime;
+uint16_t TempControl::fanTurnedOn;
+uint16_t TempControl::lastFanOn;
+uint16_t TempControl::lastFanOff;
+
 #endif
 
 
@@ -282,8 +286,23 @@ void TempControl::updateState(){
 		case WAITING_TO_HEAT:
 		case WAITING_FOR_PEAK_DETECT:
 		{
+			// Not sure, but in case of secs rolling over.
+			if(lastIdleTime>secs){
+				fanTurnedOn = 0;
+				lastFanOn = secs;
+			}
 			lastIdleTime=secs;		
 			// set waitTime to zero. It will be set to the maximum required waitTime below when wait is in effect.
+			if((fanTurnedOn == 1) && (lastFanOn+minTimes.FAN_ON_TIME < secs)){
+				fanTurnedOn = 0;
+				lastFanOff = secs;
+				Serial.printf("Turning fan : %d, timetick %d, fan off : %d, fan on %d.\n", fanTurnedOn, secs, lastFanOff, lastFanOn);
+			}
+			if((fanTurnedOn == 0) && (lastFanOff+minTimes.FAN_OFF_TIME < secs)){
+				fanTurnedOn = 1;
+				lastFanOn = secs;
+				Serial.printf("Turning fan : %d, timetick %d, fan off : %d, fan on %d.\n", fanTurnedOn, secs, lastFanOff, lastFanOn);
+			}
 			if(stayIdle){
 				break;
 			}
@@ -301,6 +320,14 @@ void TempControl::updateState(){
 					tempControl.updateWaitTime(minTimes.MIN_COOL_OFF_TIME, sinceCooling);
 				}
 				if(tempControl.cooler != &defaultActuator){
+					// To try and make sure the fan is turned off some secs, before turned on the next time.
+					if(getWaitTime() < 15){
+						if (fanTurnedOn){
+							fanTurnedOn = 0;
+							lastFanOff = secs;
+							Serial.printf("Turning fan, changing state soon : %d, timetick %d, fan off : %d, fan on %d.\n", fanTurnedOn, secs, lastFanOff, lastFanOn);
+						}
+					}
 					if(getWaitTime() > 0){
 						state = WAITING_TO_COOL;
 					}
@@ -319,6 +346,14 @@ void TempControl::updateState(){
 					}
 				}
 				if(tempControl.heater != &defaultActuator || (cc.lightAsHeater && (tempControl.light != &defaultActuator))){
+					// To try and make sure the fan is turned off some secs, before turned on the next time.
+					if(getWaitTime() < 15){
+						if (fanTurnedOn){
+							fanTurnedOn = 0;
+							lastFanOff = secs;
+							Serial.printf("Turning fan, changing state soon : %d, timetick %d, fan off : %d, fan on %d.\n", fanTurnedOn, secs, lastFanOff, lastFanOn);
+						}
+					}
 					if(getWaitTime() > 0){
 						state = WAITING_TO_HEAT;
 					}
@@ -346,6 +381,11 @@ void TempControl::updateState(){
 		{
 			doNegPeakDetect=true;
 			lastCoolTime = secs;
+			// To make sure that the fan will be off for a little time, before activating it again.
+			if((fanTurnedOn == 0) && (lastFanOff+15 < secs)){
+				fanTurnedOn = 1;
+				Serial.printf("Cooling started : %d, timetick %d, fan off : %d, fan on %d.\n", fanTurnedOn, secs, lastFanOff, lastFanOn);
+			}
 			updateEstimatedPeak(cc.maxCoolTimeForEstimate, cs.coolEstimator, sinceIdle);
 			state = COOLING; // set to cooling here, so the display of COOLING/COOLING_MIN_TIME is correct
 			
@@ -353,6 +393,8 @@ void TempControl::updateState(){
 			if(cv.estimatedPeak <= cs.fridgeSetting || (cs.mode != Modes::fridgeConstant && beerFast < (cs.beerSetting - 16))){
 				if(sinceIdle > minTimes.MIN_COOL_ON_TIME){
 					cv.negPeakEstimate = cv.estimatedPeak; // remember estimated peak when I switch to IDLE, to adjust estimator later
+					lastFanOn = secs; // To let the fan running of x seconds
+					Serial.printf("Cooling stopped: %d, timetick %d, fan off : %d, fan on %d.\n", fanTurnedOn, secs, lastFanOff, lastFanOn);
 					state=IDLE;
 					break;
 				}
@@ -368,6 +410,11 @@ void TempControl::updateState(){
 		{
 			doPosPeakDetect=true;
 			lastHeatTime=secs;
+			if((fanTurnedOn == 0) && (lastFanOff+15 < secs)){
+				fanTurnedOn = 1;
+				Serial.printf("heating started : %d, timetick %d, fan off : %d, fan on %d.\n", fanTurnedOn, secs, lastFanOff, lastFanOn);
+
+			}
 			updateEstimatedPeak(cc.maxHeatTimeForEstimate, cs.heatEstimator, sinceIdle);
 			state = HEATING; // reset to heating here, so the display of HEATING/HEATING_MIN_TIME is correct
 			
@@ -376,6 +423,8 @@ void TempControl::updateState(){
 				if(sinceIdle > minTimes.MIN_HEAT_ON_TIME){
 					cv.posPeakEstimate=cv.estimatedPeak; // remember estimated peak when I switch to IDLE, to adjust estimator later
 					state=IDLE;
+					lastFanOn = secs; // To let the fan running of x seconds
+					Serial.printf("heating stopped : %d, timetick %d, fan off : %d, fan on %d.\n", fanTurnedOn, secs, lastFanOff, lastFanOn);
 					break;
 				}
 				else{
@@ -408,7 +457,7 @@ void TempControl::updateOutputs() {
 	cooler->setActive(cooling);		
 	heater->setActive(!cc.lightAsHeater && heating);	
 	light->setActive(isDoorOpen() || (cc.lightAsHeater && heating) || cameraLightState.isActive());	
-	fan->setActive(heating || cooling);
+	fan->setActive(heating || cooling || fanTurnedOn);
 }
 
 
@@ -823,6 +872,8 @@ void MinTimes::setDefaults() {
 		MIN_HEAT_OFF_TIME = 300;
 		MIN_COOL_ON_TIME = 180;
 		MIN_HEAT_ON_TIME = 180;
+		FAN_ON_TIME = 900;
+		FAN_OFF_TIME = 960;
 
 		MIN_COOL_OFF_TIME_FRIDGE_CONSTANT= 600;
 		MIN_SWITCH_TIME = 600;
@@ -834,6 +885,9 @@ void MinTimes::setDefaults() {
 		MIN_HEAT_OFF_TIME = 300;
 		MIN_COOL_ON_TIME = 20;
 		MIN_HEAT_ON_TIME = 180;
+		FAN_ON_TIME = 300;
+		FAN_OFF_TIME = 360;
+
 
 		MIN_COOL_OFF_TIME_FRIDGE_CONSTANT= 60;
 		MIN_SWITCH_TIME = 600;
@@ -879,6 +933,8 @@ void MinTimes::loadFromSpiffs() {
     if(json_doc.containsKey(MinTimesKeys::MIN_HEAT_OFF_TIME)) MIN_HEAT_OFF_TIME = json_doc[MinTimesKeys::MIN_HEAT_OFF_TIME];
 	if(json_doc.containsKey(MinTimesKeys::MIN_COOL_ON_TIME)) MIN_COOL_ON_TIME = json_doc[MinTimesKeys::MIN_COOL_ON_TIME];
 	if(json_doc.containsKey(MinTimesKeys::MIN_HEAT_ON_TIME)) MIN_HEAT_ON_TIME = json_doc[MinTimesKeys::MIN_HEAT_ON_TIME];
+	if(json_doc.containsKey(MinTimesKeys::FAN_ON_TIME)) FAN_ON_TIME = json_doc[MinTimesKeys::FAN_ON_TIME];
+	if(json_doc.containsKey(MinTimesKeys::FAN_OFF_TIME)) FAN_OFF_TIME = json_doc[MinTimesKeys::FAN_OFF_TIME];
 	
 	if(json_doc.containsKey(MinTimesKeys::MIN_COOL_OFF_TIME_FRIDGE_CONSTANT)) MIN_COOL_OFF_TIME_FRIDGE_CONSTANT = json_doc[MinTimesKeys::MIN_COOL_OFF_TIME_FRIDGE_CONSTANT];
 	if(json_doc.containsKey(MinTimesKeys::MIN_SWITCH_TIME)) MIN_SWITCH_TIME = json_doc[MinTimesKeys::MIN_SWITCH_TIME];
@@ -899,6 +955,8 @@ void MinTimes::toJson(DynamicJsonDocument &doc) {
     doc[MinTimesKeys::MIN_HEAT_OFF_TIME] = MIN_HEAT_OFF_TIME;
 	doc[MinTimesKeys::MIN_COOL_ON_TIME] = MIN_COOL_ON_TIME;
 	doc[MinTimesKeys::MIN_HEAT_ON_TIME] = MIN_HEAT_ON_TIME;
+	doc[MinTimesKeys::FAN_ON_TIME] = FAN_ON_TIME;
+	doc[MinTimesKeys::FAN_OFF_TIME] = FAN_OFF_TIME;
 
 	doc[MinTimesKeys::MIN_COOL_OFF_TIME_FRIDGE_CONSTANT] = MIN_COOL_OFF_TIME_FRIDGE_CONSTANT;
 	doc[MinTimesKeys::MIN_SWITCH_TIME] = MIN_SWITCH_TIME;
